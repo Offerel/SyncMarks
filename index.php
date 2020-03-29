@@ -2,7 +2,7 @@
 /**
  * SyncMarks
  *
- * @version 1.1.2
+ * @version 1.1.3
  * @author Offerel
  * @copyright Copyright (c) 2020, Offerel
  * @license GNU General Public License, version 3
@@ -232,6 +232,32 @@ if(isset($_POST['pupdate'])) {
 	die();
 }
 
+if(isset($_POST['pbupdate'])) {
+	if(password_verify($_POST['password'],$userData['userHash'])) {
+		e_log(8,"Pushbullet: Updating Pushbullet information.");
+		
+		$token = edcrpt('en', $_POST['ptoken']);
+		$device = edcrpt('en', $_POST['pdevice']);
+
+		try {
+			$db = new PDO('sqlite:'.$database);
+			$sql = "UPDATE `users` SET `pAPI`='".$token."', `pDevice`='".$device."' WHERE `userID`=".$userData['userID'];
+			$db->exec($sql);
+			e_log(9,$sql);
+		}
+		catch(PDOException $e) {
+			e_log(1,'Exception : '.$e->getMessage());
+		}
+		$db = NULL;
+		header("location:".$_SERVER['PHP_SELF']);
+		die();
+	}
+	else {
+		e_log(1,"Password missmatch. Pushbullet not updated.");
+		die("Password missmatch. Pushbullet not updated.");
+	}
+}
+
 if(isset($_POST['uupdate'])) {
 	e_log(8,"Userchange: Updating user name started");
 	if($_POST['opassword'] != "") {
@@ -320,7 +346,37 @@ if(isset($_POST['caction'])) {
 			die(json_encode(getChanges($database, $client, $ctype, $userData, $ctime),JSON_UNESCAPED_SLASHES ));
 			break;
 		case "import":
-			$jmarks = json_decode(rawurldecode($_POST['bookmark']),true);
+			$jmarks = json_decode(urldecode($_POST['bookmark']),true);
+			$jerrmsg = "";
+			switch (json_last_error()) {
+				case JSON_ERROR_NONE:
+					$jerrmsg = '';
+				break;
+				case JSON_ERROR_DEPTH:
+					$jerrmsg = 'Maximum stack depth exceeded';
+				break;
+				case JSON_ERROR_STATE_MISMATCH:
+					$jerrmsg = 'Underflow or the modes mismatch';
+				break;
+				case JSON_ERROR_CTRL_CHAR:
+					$jerrmsg = 'Unexpected control character found';
+				break;
+				case JSON_ERROR_SYNTAX:
+					$jerrmsg = 'Syntax error, malformed JSON';
+				break;
+				case JSON_ERROR_UTF8:
+					$jerrmsg = 'Malformed UTF-8 characters, possibly incorrectly encoded';
+				break;
+				default:
+					$jerrmsg = 'Unknown error';
+				break;
+			}
+
+			if(strlen($jerrmsg) > 0) {
+				e_log(1,"JSON error: ".$jerrmsg);
+				die(json_encode($jerrmsg));
+			}
+
 			$client = $_POST['client'];
 			$ctype = $_POST['ctype'];
 			$ctime = round(microtime(true) * 1000);
@@ -342,6 +398,7 @@ if(isset($_POST['caction'])) {
 
 if(isset($_GET['link'])) {
 	$url = $_GET["link"];
+	e_log(9,"Bookmarklet URL: " . $url);
 
 	if(!empty($_GET["title"])) {
 		$title = $_GET["title"];
@@ -357,10 +414,15 @@ if(isset($_GET['link'])) {
 	$bookmark['id'] = unique_code(12);
 	$bookmark['type'] = 'bookmark';
 	$bookmark['added'] = round(microtime(true) * 1000);
+	
+	if(strlen($userData['pAPI']) > 0 && strlen($userData['pDevice']) > 0) {
+		pushlink($title,$url,$userData);
+	}
+	
 	if(addBookmark($database, $userData, $bookmark) == 1) {
 		echo "<script>window.onload = function() { window.close();}</script>";
-		die();
 	}
+	die();
 }
 
 if(isset($_POST['export'])) {
@@ -374,6 +436,46 @@ $bmTree = bmTree($userData,$database);
 echo "<div id='bookmarks'>$bmTree</div>";
 echo "<div id='hmarks' style='display: none'>$bmTree</div>";
 echo htmlFooter($userData['userID']);
+
+function pushlink($title,$url,$userdata) {
+	$token = edcrpt('de', $userdata['pAPI']);
+	$device = edcrpt('de', $userdata['pDevice']);
+	e_log(8,"Send Push Notification to device. Token: $token, Device: $device");
+	$data = json_encode(array(
+		'type' => 'link',
+		'title' => $title,
+		'url'	=> $url,
+		'device_iden' => $device
+	));
+
+	$curl = curl_init();
+	curl_setopt($curl, CURLOPT_URL, 'https://api.pushbullet.com/v2/pushes');
+	curl_setopt($curl, CURLOPT_USERPWD, $token);
+	curl_setopt($curl, CURLOPT_CUSTOMREQUEST, 'POST');
+	curl_setopt($curl, CURLOPT_HTTPHEADER, ['Content-Type: application/json', 'Content-Length: ' . strlen($data)]);
+	curl_setopt($curl, CURLOPT_POSTFIELDS, $data);
+	curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+	curl_setopt($curl, CURLOPT_HEADER, false);
+	curl_exec($curl);
+	curl_close($curl);
+}
+
+function edcrpt($action, $text) {
+    $output = false;
+    $encrypt_method = "AES-256-CBC";
+    $secret_key = 'p4M7kU49DVGB73dM';
+    $secret_iv = 'Hd6uRkLHmg3Z59d7';
+    $key = hash('sha256', $secret_key);
+    $iv = substr(hash('sha256', $secret_iv), 0, 16);
+
+    if ( $action == 'en' ) {
+        $output = openssl_encrypt($text, $encrypt_method, $key, 0, $iv);
+        $output = base64_encode($output);
+    } else if( $action == 'de' ) {
+        $output = openssl_decrypt(base64_decode($text), $encrypt_method, $key, 0, $iv);
+    }
+    return $output;
+}
 
 function cfolderMatching($bookmark) {
 	switch($bookmark['folder']) {
@@ -404,8 +506,6 @@ $content = '<!DOCTYPE NETSCAPE-Bookmark-file-1>
 	 DO NOT EDIT! -->
 <META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">
 <TITLE>Bookmarks</TITLE>';
-//<H1>Bookmarks</H1>
-//<DL><p>';
 
 $umarks = makeHTMLExport(getBookmarks($uid,$database));
 do {
@@ -414,9 +514,6 @@ do {
 	$len = $end - $start;
 	$umarks = substr_replace($umarks, "", $start, $len);
 } while (strpos($umarks,"%ID") > 0);
-//$umarks = preg_replace("/[\r\n]\s*[\r\n]/",' ',$umarks);
-
-//die($umarks);
 
 $content.="$umarks\r\n</DL><p>";
 
@@ -901,14 +998,14 @@ function htmlHeader($ud) {
 	}
 
 	$clink = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://" . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI']; 
-	$bookmarklet = "javascript:void%20function(){bWindow=window.open(%22$clink%3Ftitle=%22+document.title+%22%26link=%22+document.location.href,%22bWindow%22,%22width=480,height=245%22,replace=!1)}();";
-		
+	$bookmarklet = "javascript:void function(){window.open('$clink?title='+document.title+'&link='+encodeURIComponent(document.location.href),'bWindow','width=480,height=245',replace=!0)}();";	
 	$mainmenu = "<div id='mainmenu' class='mmenu'>
 					<ul>
 						<li id='meheader'><span class='logo'>&nbsp;</span><span class='text'>".$ud['userName']."<br>Last login: ".date("d.m.y H:i",$ud['userLastLogin'])."</span></li>
 						<li id='muser'>Username</li>
 						<li id='mpassword'>Password</li>
 						<li id='clientedt'>Clients</li>
+						<li id='pbullet'>Pushbullet</li>
 						<li id='bexport'>Export</li>
 						<li id='bmlet'><a href=\"$bookmarklet\">Bookmarklet</a></li>
 						$admenu
@@ -939,6 +1036,18 @@ function htmlHeader($ud) {
 						<div class='dbutton'><button class='mdcancel' type='reset' value='Reset'>Cancel</button><button type='submit' name='pupdate' value='Save'>Save</button></div>
 					</form>
 				</div>";
+
+	$pbulletform = "<div id='pbulletform' class='mbmdialog'>
+				<h6>Pushbullet</h6>
+				<div class='dialogdescr'>Maintain your API Token and Device ID. 
+				</div>
+					<form action='".$_SERVER['PHP_SELF']."' method='POST'>					
+						<input placeholder='API Token' type='text' id='ptoken' name='ptoken' value='".edcrpt('de', $ud['pAPI'])."' />
+						<input placeholder='Device ID' type='text' id='pdevice' name='pdevice' value='".edcrpt('de', $ud['pDevice'])."' />
+						<input required placeholder='Password' type='password' id='password' name='password' autocomplete='current-password' value='' />
+						<div class='dbutton'><button class='mdcancel' type='reset' value='Reset'>Cancel</button><button type='submit' name='pbupdate' value='Save'>Save</button></div>
+					</form>
+				</div>";
 	
 	$query = "SELECT * FROM `clients` WHERE `uid` = ".$ud['userID']." ORDER BY `lastseen` DESC";
 	$statement = $db->prepare($query);
@@ -956,8 +1065,9 @@ function htmlHeader($ud) {
 	$clientList.= "</ul>";
 	
 	$mngclientform = "<div id='mngcform' class='mmenu'>$clientList</div>";
+	//$mngpbullet = "<div id='mngpbullet' class='mmenu'>$clientList</div>";
 	
-	$htmlHeader.= $mainmenu.$userform.$passwordform.$logform.$mnguserform.$mngclientform;
+	$htmlHeader.= $mainmenu.$userform.$passwordform.$pbulletform.$logform.$mnguserform.$mngclientform;
 	$db = NULL;
 	return $htmlHeader;
 }
@@ -1270,7 +1380,7 @@ function initDB($database) {
 		$query = "CREATE TABLE `bookmarks` (`bmID`	TEXT NOT NULL, `bmParentID`	TEXT NOT NULL, `bmIndex` INTEGER NOT NULL, `bmTitle` TEXT, `bmType`	TEXT NOT NULL, `bmURL` TEXT, `bmAdded` TEXT NOT NULL, `bmModified` TEXT, `userID` INTEGER NOT NULL, `bmAction` INTEGER, PRIMARY KEY(`bmID`))";
 		$db->exec($query);
 		e_log(9,$query);
-		$query = "CREATE TABLE `users` (`userID` INTEGER NOT NULL, `userName` TEXT UNIQUE NOT NULL, `userType` INTEGER NOT NULL, `userHash`	TEXT NOT NULL, `userLastLogin` INT(11), `sessionID`	VARCHAR(255) UNIQUE, `userOldLogin`	INT(11), PRIMARY KEY(`userID`));";
+		$query = "CREATE TABLE `users` (`userID` INTEGER NOT NULL, `userName` TEXT UNIQUE NOT NULL, `userType` INTEGER NOT NULL, `userHash`	TEXT NOT NULL, `userLastLogin` INT(11), `sessionID`	VARCHAR(255) UNIQUE, `userOldLogin`	INT(11), `pAPI`	VARCHAR(255) UNIQUE, `pDevice` VARCHAR(255) UNIQUE, PRIMARY KEY(`userID`));";
 		$db->exec($query);
 		e_log(9,$query);
 		$query = "CREATE TABLE `clients` (`cid` TEXT NOT NULL UNIQUE,`cname` TEXT, `ctype` TEXT NOT NULL, `uid`	INTEGER NOT NULL, `lastseen` TEXT NOT NULL, PRIMARY KEY(`cid`));";

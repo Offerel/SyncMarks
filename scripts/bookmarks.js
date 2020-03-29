@@ -1,29 +1,6 @@
 var menu = document.querySelector('.menu');
 var bookmarks = document.querySelectorAll('.file').forEach(bookmark => bookmark.addEventListener('contextmenu',onContextMenu,false));
 
-/*
-window.addEventListener('load', () => {
-	var parsedUrl = new URL(window.location);
-	console.log('Title shared: ' + parsedUrl.searchParams.get('name'));
-	console.log('Text shared: ' + parsedUrl.searchParams.get('description'));
-	console.log('URL shared: ' + parsedUrl.searchParams.get('link'));
-	console.log('PWA shared: ' + parsedUrl.searchParams.get('pwa'));
-
-	alert('Title shared: ' + parsedUrl.searchParams.get('name'));
-	alert('Text shared: ' + parsedUrl.searchParams.get('description'));
-	alert('URL shared: ' + parsedUrl.searchParams.get('link'));
-	alert('PWA shared: ' + parsedUrl.searchParams.get('pwa'));
-});
-*/
-/*
-if ('serviceWorker' in navigator) {
-	navigator.serviceWorker.register('sw.js').then(function(reg){
-		console.log("ServiceWorker installed");
-	}).catch(function(err) {
-		console.log("Cant install ServiceWorker: ", err)
-	});
-}
-*/
 if (/Mobi|Android/i.test(navigator.userAgent)) {
 	var ffolder = [];
 	$('.ffolder').on('change', function() {
@@ -148,6 +125,14 @@ $("#mpassword").on("click",function(){
 	$('.mbmdialog').hide();
 	$('.mmenu').hide();
 	$("#passwordform").show();
+	document.querySelector('#bookmarks').addEventListener('click',hideMenu, false);
+});
+
+$("#pbullet").on("click",function(){
+	$('.mbmdialog').hide();
+	$('.mmenu').hide();
+	$('#pbulletform').show();
+	console.log('Pushbullet');
 	document.querySelector('#bookmarks').addEventListener('click',hideMenu, false);
 });
 
