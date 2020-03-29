@@ -16,7 +16,6 @@ set_error_handler("e_log");
 if(!file_exists($database)) initDB($database);
 
 if(!isset($_SERVER['PHP_AUTH_USER']) || $_SERVER['PHP_AUTH_USER'] === "" || !isset($_SERVER['PHP_AUTH_PW']) || !isset($_SESSION['fauth'])) {
-//if(!isset($_SERVER['PHP_AUTH_USER']) || $_SERVER['PHP_AUTH_USER'] === "" || !isset($_SERVER['PHP_AUTH_PW'])) {
 	doLogin($database,$realm);
 }
 else {
@@ -631,7 +630,6 @@ function addBookmark($database, $ud, $bm) {
 	$db = new PDO('sqlite:'.$database);
 	$db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 	e_log(8,"Check if bookmark already exists for user.");
-	//$query = "SELECT COUNT(*) AS bmcount FROM `bookmarks` WHERE `bmAction` IS NULL AND `bmUrl` = '".$bm['url']."' and userID = ".$ud["userID"];
 	$query = "SELECT COUNT(*) AS bmcount, MAX(bmAction) as bmaction FROM `bookmarks` WHERE `bmUrl` = '".$bm['url']."' and userID = ".$ud["userID"];
 	e_log(9,$query);
 	$statement = $db->prepare($query);
@@ -1065,7 +1063,6 @@ function htmlHeader($ud) {
 	$clientList.= "</ul>";
 	
 	$mngclientform = "<div id='mngcform' class='mmenu'>$clientList</div>";
-	//$mngpbullet = "<div id='mngpbullet' class='mmenu'>$clientList</div>";
 	
 	$htmlHeader.= $mainmenu.$userform.$passwordform.$pbulletform.$logform.$mnguserform.$mngclientform;
 	$db = NULL;
