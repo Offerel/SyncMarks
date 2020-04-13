@@ -656,11 +656,13 @@ function addBookmark($database, $ud, $bm) {
 	
 	if(is_null($folderData['bmParentID'])) {
 		e_log(8,"Folder not found, using 'unfiled_____'.");
-		$query = "SELECT MAX(`bmIndex`) +1 AS `nindex`, `bmParentId` FROM `bookmarks` WHERE `bmParentId` = 'unfiled_____' AND `userId` = 1";
+		//$query = "SELECT MAX(`bmIndex`) +1 AS `nindex`, `bmParentId` FROM `bookmarks` WHERE `bmParentId` = 'unfiled_____' AND `userId` = 1";
+		$query = "SELECT MAX(`bmIndex`) +1 AS `nindex`, `bmParentId` FROM `bookmarks` WHERE `userId` = 1";
 		$statement = $db->prepare($query);
 		e_log(9,$query);
 		$statement->execute();
 		$folderData = $statement->fetchAll(PDO::FETCH_ASSOC)[0];
+		$folderData['bmParentID'] = 'unfiled_____';
 	}
 	
 	if(!empty($folderData)) {
