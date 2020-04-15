@@ -544,17 +544,17 @@ function delBookmark($database, $ud, $bm) {
 function moveBookmark($database, $ud, $bm) {
 	$db = new PDO('sqlite:'.$database);
 	e_log(8,"Bookmark seems to be moved, checking current folder data");
-	$query = "SELECT MAX(`bmIndex`) +1 AS `nindex`, `bmParentID` FROM `bookmarks` WHERE `bmParentID` IN (SELECT `bmID` FROM `bookmarks` WHERE `bmType` = 'folder' AND `bmTitle` = '".$bm['nfolder']."' AND `userID` = ".$ud['userID'].")";
+	$query = "SELECT `bmID` FROM `bookmarks` WHERE `bmType` = 'folder' AND `bmTitle` = '".$bm['nfolder']."' AND `userID` = ".$ud['userID'];
 	$statement = $db->prepare($query);
 	e_log(9,$query);
 	$statement->execute();
 	$folderData = $statement->fetchAll(PDO::FETCH_ASSOC)[0];
 	
-	if(is_null($folderData['bmParentID'])) {
+	if(is_null($folderData['bmID'])) {
 		e_log(8,"Folder not found, can`t move bookmark.");
 		return "Folder not found, bookmark not moved.";
 	}
-	
+
 	if(array_key_exists("url", $bm)) {
 		e_log(8,"Checking bookmark data before moving it");
 		$query = "SELECT * FROM `bookmarks` WHERE `userID`= ".$ud["userID"]." AND `bmURL` = '".$bm["url"]."'";
@@ -570,7 +570,7 @@ function moveBookmark($database, $ud, $bm) {
 				e_log(9,$query);
 				$db->exec($query);
 				e_log(8,"Re-Add bookmark on new position");
-				$query = "INSERT INTO `bookmarks` (`bmID`,`bmParentID`,`bmIndex`,`bmTitle`,`bmType`,`bmURL`,`bmAdded`,`userID`) VALUES ('".$oldData["bmID"]."', '".$folderData['bmParentID']."', ".$bm['index'].", '".$oldData['bmTitle']."', '".$oldData['bmType']."', '".$oldData['bmURL']."', ".$oldData['bmAdded'].", ".$ud["userID"].")";
+				$query = "INSERT INTO `bookmarks` (`bmID`,`bmParentID`,`bmIndex`,`bmTitle`,`bmType`,`bmURL`,`bmAdded`,`userID`) VALUES ('".$oldData["bmID"]."', '".$bm['folder']."', ".$bm['index'].", '".$oldData['bmTitle']."', '".$oldData['bmType']."', '".$oldData['bmURL']."', ".$oldData['bmAdded'].", ".$ud["userID"].")";
 				e_log(9,$query);
 				$db->exec($query);
 				return true;
@@ -583,6 +583,9 @@ function moveBookmark($database, $ud, $bm) {
 		else {
 			return "Cant move bookmark, data not found.";
 		}
+	}
+	else {
+		e_log(8,"url key not found");
 	}
 }
 
@@ -641,6 +644,9 @@ function addBookmark($database, $ud, $bm) {
 			$query = "UPDATE `bookmarks` SET `bmAction` = NULL WHERE `bmUrl` = '".$bm['url']."' AND userID = ".$ud["userID"].";";
 			$db->exec($query);
 			e_log(9,$query);
+			$message = "Bookmark not added, it exists already for this user, instead bookmark is undeleted now on old position.";
+			e_log(8,$message);
+			return $message;
 		}
 		else {
 			e_log(8,"Bookmark not added, it exists already for this user");
