@@ -167,12 +167,10 @@ $("#bexport").on("click",function(){
 		}
     });  
     return false;
-
-
-	document.querySelector('#bookmarks').addEventListener('click',hideMenu, false);
 });
 
 $("#footer").on("click",function(){
+	document.querySelector('#bookmarks').addEventListener('click',hideMenu, false);
 	$('#bmarkadd').show();
 	$('.mmenu').hide();
 	url.focus();
@@ -434,6 +432,7 @@ function showMenu(x, y){
 function hideMenu(){
     menu.classList.remove('show-menu');
 	$('.mmenu').hide();
+	$('.mbmdialog').hide();
 	document.querySelector('#bookmarks').removeEventListener('click',hideMenu, false);
 }
 
