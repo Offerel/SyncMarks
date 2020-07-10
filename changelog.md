@@ -1,5 +1,9 @@
 ChangeLog
 =========
+1.2.0 (2020-07-10)
+-------------------------
+* Added support for pushed links
+  
 1.1.1 (2020-02-24)
 -------------------------
 * Added bookmarklet to add current site as bookmark

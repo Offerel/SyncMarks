@@ -2,7 +2,7 @@
 /**
  * SyncMarks
  *
- * @version 1.1.3
+ * @version 1.2.0
  * @author Offerel
  * @copyright Copyright (c) 2020, Offerel
  * @license GNU General Public License, version 3
@@ -389,9 +389,54 @@ if(isset($_POST['caction'])) {
 			$ctime = round(microtime(true) * 1000);
 			die(json_encode(getBookmarks($userData['userID'],$database)));
 			break;
+		case "getpurl":
+			$client = $_POST['client'];
+			$url = $_POST['url'];
+			$ctime = time();
+			$title = getSiteTitle($url);
+			$db = new PDO('sqlite:'.$database);
+			e_log(8,"Get new pushed URL: ".$url);
+			$query = "INSERT INTO `notifications` (`title`,`message`,`ntime`,`repeat`,`nloop`,`publish_date`,`userID`) VALUES ('".$title."', '".$url."', ".$ctime.", '0', '1', '".$ctime."', ".$userData['userID'].")";
+			e_log(9,$query);
+			$erg = $db->exec($query);
+			die();
+			break;
 		default:
 			die(json_encode("Unknown Action"));
 	}
+	die();
+}
+
+if(isset($_GET['gurls'])) {
+	$db = new PDO('sqlite:'.$database);
+	e_log(8,"Get pushed site from clients.");
+	$query = "SELECT * FROM `notifications` WHERE `nloop` = 1 AND `userID` = ".$userData['userID'];
+	$statement = $db->prepare($query);
+	e_log(9,$query);
+	$statement->execute();
+	$notificationData = $statement->fetchAll(PDO::FETCH_ASSOC);
+	e_log(8,"Found ".count($notificationData)." links. will push them to client.");
+	
+	if (!empty($notificationData)) {
+		foreach($notificationData as $key => $notification) {
+			$myObj[$key]['title'] = html_entity_decode($notification['title']);
+			$myObj[$key]['url'] = $notification['message'];
+			$myObj[$key]['nkey'] = $notification['id'];
+		}
+		die(json_encode($myObj));
+	}
+	else {
+		die();
+	}
+}
+
+if(isset($_GET['durl'])) {
+	$db = new PDO('sqlite:'.$database);
+	$notification = $_GET['durl'];
+	e_log(8,"Remove notification.");	
+	$query = "UPDATE `notifications` SET `nloop`= 0, `ntime`= '".time()."' WHERE `id` = $notification AND `userID` = ".$userData['userID'];
+	e_log(9,$query);
+	$db->exec($query);
 	die();
 }
 
@@ -629,8 +674,7 @@ function addFolder($database, $ud, $bm) {
 	}
 }
 
-function addBookmark($database, $ud, $bm) {
-	$db = new PDO('sqlite:'.$database);
+function addBookmark($database, $ud, $bm) { $db = new PDO('sqlite:'.$database);
 	$db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 	e_log(8,"Check if bookmark already exists for user.");
 	$query = "SELECT COUNT(*) AS bmcount, MAX(bmAction) as bmaction FROM `bookmarks` WHERE `bmUrl` = '".$bm['url']."' and userID = ".$ud["userID"];
@@ -943,9 +987,9 @@ function htmlHeader($ud) {
 			<head>
 				<meta name='viewport' content='width=device-width, initial-scale=1'>
 				<base href='".dirname($_SERVER['SCRIPT_NAME'])."/' />
-				<script type='text/javascript' src='scripts/jquery-3.4.1.min.js'></script>
-				<link type='text/css' rel='stylesheet' href='bookmarks.css'>
-				<link rel='shortcut icon' type='image/x-icon' href='images/bookmarks.ico'>
+				<script type='text/javascript' src='./scripts/jquery-3.4.1.min.js'></script>
+				<link type='text/css' rel='stylesheet' href='./bookmarks.css'>
+				<link rel='shortcut icon' type='image/x-icon' href='./images/bookmarks.ico'>
 				<link rel='manifest' href='./manifest.json'>
 				<meta name='theme-color' content='#0879D9'>
 				<title>Bookmarks</title>
@@ -1128,7 +1172,8 @@ function htmlFooter($uid) {
 					</form></div>
 					
 					<div id='footer'></div>
-					<script type='text/javascript' src='./scripts/bookmarks.js'></script>
+					
+					<script type='text/javascript' src='./bookmarks.js'></script>
 					</body></html>";
 
 	$menu = "<menu class='menu'><input type='hidden' id='bmid' title='bmtitle' value=''>
@@ -1355,7 +1400,8 @@ function doLogin($database,$realm) {
 		<html>
 			<head>
 				<meta name='viewport' content='width=device-width, initial-scale=1'>
-				<link rel='shortcut icon' type='image/x-icon' href='images/bookmarks.ico'>
+				<base href='".dirname($_SERVER['SCRIPT_NAME'])."/' />
+				<link rel='shortcut icon' type='image/x-icon' href='.images/bookmarks.ico'>
 				<link rel='manifest' href='./manifest.json'>
 				<meta name='theme-color' content='#0879D9'>
 				<title>Bookmarks</title>
@@ -1389,6 +1435,9 @@ function initDB($database) {
 		$db->exec($query);
 		e_log(9,$query);
 		$query = "CREATE TABLE `clients` (`cid` TEXT NOT NULL UNIQUE,`cname` TEXT, `ctype` TEXT NOT NULL, `uid`	INTEGER NOT NULL, `lastseen` TEXT NOT NULL, PRIMARY KEY(`cid`));";
+		$db->exec($query);
+		e_log(9,$query);
+		$query = "CREATE TABLE `notifications` (`id` INTEGER NOT NULL, `title` varchar(250) NOT NULL, `message` TEXT NOT NULL, `ntime` varchar(250) NOT NULL DEFAULT NULL, `repeat` INTEGER NOT NULL DEFAULT 1, `nloop` INTEGER NOT NULL DEFAULT 1, `publish_date` varchar(250) NOT NULL, `userID` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`userID`) REFERENCES `users`(`userID`));";
 		$db->exec($query);
 		e_log(9,$query);
 
