@@ -1,5 +1,9 @@
 ChangeLog
 =========
+1.2.1 (2020-07-16)
+-------------------------
+* Fixed push support
+
 1.2.0 (2020-07-10)
 -------------------------
 * Added support for pushed links
