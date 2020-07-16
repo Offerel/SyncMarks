@@ -132,7 +132,6 @@ $("#pbullet").on("click",function(){
 	$('.mbmdialog').hide();
 	$('.mmenu').hide();
 	$('#pbulletform').show();
-	console.log('Pushbullet');
 	document.querySelector('#bookmarks').addEventListener('click',hideMenu, false);
 });
 
