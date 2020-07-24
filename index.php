@@ -2,7 +2,7 @@
 /**
  * SyncMarks
  *
- * @version 1.2.1
+ * @version 1.2.2
  * @author Offerel
  * @copyright Copyright (c) 2020, Offerel
  * @license GNU General Public License, version 3
@@ -32,7 +32,7 @@ if(!isset($userData)) $userData = getUserdata($database);
 
 if(isset($_POST['bmedt'])) {
 	$db = new PDO('sqlite:'.$database);
-	$query = "UPDATE `bookmarks` SET `bmTitle` = '".$_POST['title']."', `bmURL` = '".$_POST['url']."', `bmAdded` = '".round(microtime(true) * 1000)."' WHERE `bmID` = '".$_POST['id']."' AND `userID` = ".$userData['userID'];
+	$query = "UPDATE `bookmarks` SET `bmTitle` = '".$_POST['title']."', `bmURL` = '".validate_url($_POST['url'])."', `bmAdded` = '".round(microtime(true) * 1000)."' WHERE `bmID` = '".$_POST['id']."' AND `userID` = ".$userData['userID'];
 	$db->exec($query);
 	$count = $db = NULL;
 	if($count > 0)
@@ -139,7 +139,7 @@ if(isset($_POST['mclear'])) {
 
 if(isset($_POST['madd'])) {
 	$bmParentID = $_POST['folder'];
-	$bmURL = trim($_POST['url']);
+	$bmURL = validate_url(trim($_POST['url']));
 	$bmID = unique_code(12);
 	$bmIndex = getIndex($bmParentID);
 	if(strpos($bmURL,'http') != 0) {
@@ -165,6 +165,8 @@ if(isset($_POST['madd'])) {
 			e_log(1,'Exception : '.$e->getMessage());
 		}
 		$db = NULL;
+		
+		
 	}
 	if(!isset($_POST['rc'])) {
 		e_log(8,"Manual added bookmark for ".$userData['userName']);
@@ -311,7 +313,7 @@ if(isset($_POST['logout'])) {
 if(isset($_POST['caction'])) {
 	switch($_POST['caction']) {
 		case "addmark":
-			$bookmark = json_decode(rawurldecode($_POST['bookmark']),true);
+			$bookmark = validate_url(json_decode(rawurldecode($_POST['bookmark']),true));
 			$client = $_POST['client'];
 			$ctype = $_POST['ctype'];
 			if($ctype == "chrome") $bookmark = cfolderMatching($bookmark);
@@ -353,7 +355,7 @@ if(isset($_POST['caction'])) {
 			$client = $_POST['client'];
 			$ctype = $_POST['ctype'];
 			$ctime = round(microtime(true) * 1000);
-			die(json_encode(getChanges($database, $client, $ctype, $userData, $ctime),JSON_UNESCAPED_SLASHES ));
+			die(json_encode(getChanges($database, $client, $ctype, $userData, $ctime),JSON_UNESCAPED_SLASHES));
 			break;
 		case "import":
 			$jmarks = json_decode(urldecode($_POST['bookmark']),true);
@@ -403,7 +405,7 @@ if(isset($_POST['caction'])) {
 			break;
 		case "getpurl":
 			$client = $_POST['client'];
-			$url = $_POST['url'];
+			$url = validate_url($_POST['url']);
 			$ctime = time();
 			$title = getSiteTitle($url);
 			$db = new PDO('sqlite:'.$database);
@@ -411,7 +413,7 @@ if(isset($_POST['caction'])) {
 			$query = "INSERT INTO `notifications` (`title`,`message`,`ntime`,`repeat`,`nloop`,`publish_date`,`userID`) VALUES ('".$title."', '".$url."', ".$ctime.", '0', '1', '".$ctime."', ".$userData['userID'].")";
 			e_log(9,$query);
 			$erg = $db->exec($query);
-			die();
+			if($erg !== 0) echo("URL successfully pushed.");
 			break;
 		case "lsnc":
 			$db = new PDO('sqlite:'.$database);
@@ -422,6 +424,7 @@ if(isset($_POST['caction'])) {
 			$statement->execute();
 			$lastSeen = $statement->fetchColumn();
 			$db = NULL;
+			e_log(8,"lastseen date: ".$lastSeen);
 			die($lastSeen);
 			break;
 		default:
@@ -464,7 +467,7 @@ if(isset($_GET['durl'])) {
 }
 
 if(isset($_GET['link'])) {
-	$url = $_GET["link"];
+	$url = validate_url($_GET["link"]);
 	e_log(9,"Bookmarklet URL: " . $url);
 
 	if(!empty($_GET["title"])) {
@@ -486,8 +489,17 @@ if(isset($_GET['link'])) {
 		pushlink($title,$url,$userData);
 	}
 	
-	if(addBookmark($database, $userData, $bookmark) == 1) {
-		echo "<script>window.onload = function() { window.close();}</script>";
+	$res = addBookmark($database, $userData, $bookmark);
+	if($res == 1) {
+		if(isset($_GET['client']) && $_GET['client'] == 'Android') {
+			echo("URL is added successfully.");
+		}
+		else {
+			echo "<script>window.onload = function() { window.close();}</script>";
+		}
+	}
+	else {
+		echo $res;
 	}
 	die();
 }
@@ -503,6 +515,19 @@ $bmTree = bmTree($userData,$database);
 echo "<div id='bookmarks'>$bmTree</div>";
 echo "<div id='hmarks' style='display: none'>$bmTree</div>";
 echo htmlFooter($userData['userID']);
+
+function validate_url($url) {
+	$url = urldecode($url);
+	$url = filter_var($url, FILTER_SANITIZE_STRING);
+	$url = filter_var($url, FILTER_SANITIZE_URL);
+
+	if (filter_var($url, FILTER_VALIDATE_URL)) {
+		return $url;
+	} else {
+		e_log(2,"URL is not a valid URL. Exit now.");
+		exit;
+	}
+}
 
 function pushlink($title,$url,$userdata) {
 	$token = edcrpt('de', $userdata['pAPI']);
@@ -697,7 +722,8 @@ function addFolder($database, $ud, $bm) {
 	}
 }
 
-function addBookmark($database, $ud, $bm) { $db = new PDO('sqlite:'.$database);
+function addBookmark($database, $ud, $bm) { 
+	$db = new PDO('sqlite:'.$database);
 	$db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 	e_log(8,"Check if bookmark already exists for user.");
 	$query = "SELECT COUNT(*) AS bmcount, MAX(bmAction) as bmaction FROM `bookmarks` WHERE `bmUrl` = '".$bm['url']."' and userID = ".$ud["userID"];
@@ -972,7 +998,7 @@ function e_log($level,$message,$errfile="",$errline="",$output=0) {
 	if($errfile != "") $message = $message." in ".$errfile." on line ".$errline;
 	$user = '';
 	if(isset($_SERVER['PHP_AUTH_USER'])) $user = $_SERVER['PHP_AUTH_USER'];
-	$line = $_SERVER['REMOTE_ADDR']." - ".$user." [".date("Y/m/d H:i:s")."] [".$mode."] ".$message."\n";
+	$line = "[".date("d-M-Y H:i:s")."] - [$mode] - $user - ".$_SERVER['REMOTE_ADDR']." - $message\n";
 
 	if($level <= $loglevel) {
 		file_put_contents($logfile, $line, FILE_APPEND);

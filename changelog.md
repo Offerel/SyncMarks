@@ -1,9 +1,14 @@
 ChangeLog
 =========
-1.2.1 (2020-07-16)
+1.2.2 (2020-07-24)
 -------------------------
-* Fixed push support
+* Validate URL's before add them
+* Fix for pushed URL's
 
+1.2.1 (2020-07-17)
+-------------------------
+* Fix for pushed URL's
+  
 1.2.0 (2020-07-10)
 -------------------------
 * Added support for pushed links
