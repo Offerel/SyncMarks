@@ -427,6 +427,30 @@ if(isset($_POST['caction'])) {
 			e_log(8,"lastseen date: ".$lastSeen);
 			die($lastSeen);
 			break;
+		case "rmessage":
+			$db = new PDO('sqlite:'.$database);
+			$message = filter_var($_POST['message'], FILTER_VALIDATE_INT);
+			e_log(8,"Try to remove notification ".$message);
+			$query = "DELETE FROM `notifications` WHERE `userID` = ".$userData['userID']." AND `id` = $message;";
+			e_log(9,$query);
+			$count = $db->exec($query);
+			$db = NULL;
+			($count === 1) ? e_log(8,"Notification successfully removed") : e_log(9,"Error, removing notification");
+			echo $count;
+			break;
+		case "soption":
+			$option = filter_var($_POST['option'], FILTER_SANITIZE_STRING);
+			$value = filter_var(filter_var($_POST['value'], FILTER_SANITIZE_NUMBER_INT), FILTER_VALIDATE_INT);
+			e_log(8,"Option received: ".$option.":".$value);
+			$oOptionsA = json_decode($userData['uOptions'],true);
+			$oOptionsA[$option] = $value;
+			$db = new PDO('sqlite:'.$database);
+			$query = "UPDATE `users` SET `uOptions`='".json_encode($oOptionsA)."' WHERE `userID`=".$userData['userID'];
+			e_log(9,$query);
+			$count = $db->exec($query);
+			($count === 1) ? e_log(8,"Option saved") : e_log(9,"Error, saving option");
+			echo $count;
+			break;
 		default:
 			die(json_encode("Unknown Action"));
 	}
@@ -437,6 +461,7 @@ if(isset($_GET['gurls'])) {
 	$db = new PDO('sqlite:'.$database);
 	e_log(8,"Get pushed site from clients.");
 	$query = "SELECT * FROM `notifications` WHERE `nloop` = 1 AND `userID` = ".$userData['userID'];
+	$uOptions = json_decode($userData['uOptions'],true);
 	$statement = $db->prepare($query);
 	e_log(9,$query);
 	$statement->execute();
@@ -448,6 +473,7 @@ if(isset($_GET['gurls'])) {
 			$myObj[$key]['title'] = html_entity_decode($notification['title']);
 			$myObj[$key]['url'] = $notification['message'];
 			$myObj[$key]['nkey'] = $notification['id'];
+			$myObj[$key]['nOption'] = $uOptions['notifications'];
 		}
 		die(json_encode($myObj));
 	}
@@ -458,11 +484,12 @@ if(isset($_GET['gurls'])) {
 
 if(isset($_GET['durl'])) {
 	$db = new PDO('sqlite:'.$database);
-	$notification = $_GET['durl'];
+	$notification = filter_var($_GET['durl'], FILTER_VALIDATE_INT);
 	e_log(8,"Remove notification.");	
 	$query = "UPDATE `notifications` SET `nloop`= 0, `ntime`= '".time()."' WHERE `id` = $notification AND `userID` = ".$userData['userID'];
 	e_log(9,$query);
-	$db->exec($query);
+	$count = $db->exec($query);
+	echo $count;
 	die();
 }
 
@@ -474,8 +501,7 @@ if(isset($_GET['link'])) {
 		$title = $_GET["title"];
 	}
 	else {
-		$title = "unknown";
-		e_log(8,"No Title specified, set to 'unknown'.");
+		$title = getSiteTitle($url);
 	}
 
 	$bookmark['url'] = $url;
@@ -485,7 +511,13 @@ if(isset($_GET['link'])) {
 	$bookmark['type'] = 'bookmark';
 	$bookmark['added'] = round(microtime(true) * 1000);
 	
-	if(strlen($userData['pAPI']) > 0 && strlen($userData['pDevice']) > 0) {
+	if(isset($_GET['push']) && $_GET['push']=='false') {
+		$push = false;
+	} else {
+		$push = true;
+	}
+	
+	if(strlen($userData['pAPI']) > 0 && strlen($userData['pDevice']) > 0 && $push) {
 		pushlink($title,$url,$userData);
 	}
 	
@@ -517,9 +549,7 @@ echo "<div id='hmarks' style='display: none'>$bmTree</div>";
 echo htmlFooter($userData['userID']);
 
 function validate_url($url) {
-	$url = urldecode($url);
-	$url = filter_var($url, FILTER_SANITIZE_STRING);
-	$url = filter_var($url, FILTER_SANITIZE_URL);
+	$url = filter_var(filter_var(urldecode($url), FILTER_SANITIZE_STRING), FILTER_SANITIZE_URL);
 
 	if (filter_var($url, FILTER_VALIDATE_URL)) {
 		return $url;
@@ -755,7 +785,6 @@ function addBookmark($database, $ud, $bm) {
 	
 	if(is_null($folderData['bmParentID'])) {
 		e_log(8,"Folder not found, using 'unfiled_____'.");
-		//$query = "SELECT MAX(`bmIndex`) +1 AS `nindex`, `bmParentId` FROM `bookmarks` WHERE `bmParentId` = 'unfiled_____' AND `userId` = 1";
 		$query = "SELECT MAX(`bmIndex`) +1 AS `nindex`, `bmParentId` FROM `bookmarks` WHERE `userId` = 1";
 		$statement = $db->prepare($query);
 		e_log(9,$query);
@@ -1035,9 +1064,10 @@ function htmlHeader($ud) {
 		<html>
 			<head>
 				<meta name='viewport' content='width=device-width, initial-scale=1'>
-				<base href='".dirname($_SERVER['SCRIPT_NAME'])."/' />
+				<!-- <base href='".dirname($_SERVER['SCRIPT_NAME'])."/' /> -->
 				<script type='text/javascript' src='./scripts/jquery-3.4.1.min.js'></script>
-				<link type='text/css' rel='stylesheet' href='./bookmarks.css'>
+				<link type='text/css' rel='stylesheet' href='bookmarks.css?ran=1'>
+				<link type='text/css' rel='stylesheet' href='font-awesome/css/font-awesome.min.css?ran=2'>
 				<link rel='shortcut icon' type='image/x-icon' href='./images/bookmarks.ico'>
 				<link rel='manifest' href='./manifest.json'>
 				<meta name='theme-color' content='#0879D9'>
@@ -1105,6 +1135,7 @@ function htmlHeader($ud) {
 						<li id='mpassword'>Password</li>
 						<li id='clientedt'>Clients</li>
 						<li id='pbullet'>Pushbullet</li>
+						<li id='nmessages'>Notifications</li>
 						<li id='bexport'>Export</li>
 						<li id='bmlet'><a href=\"$bookmarklet\">Bookmarklet</a></li>
 						$admenu
@@ -1147,6 +1178,71 @@ function htmlHeader($ud) {
 						<div class='dbutton'><button class='mdcancel' type='reset' value='Reset'>Cancel</button><button type='submit' name='pbupdate' value='Save'>Save</button></div>
 					</form>
 				</div>";
+
+	$query = "SELECT * FROM `notifications` WHERE `userID` = ".$ud['userID']." AND `nloop` = 1 ORDER BY `publish_date`";
+	$statement = $db->prepare($query);
+	$statement->execute();
+	$aNotitData = $statement->fetchAll(PDO::FETCH_ASSOC);
+	$aNotiList = "";
+	foreach($aNotitData as $key => $aNoti) {
+		$aNotiList.= "<div class='NotiTableRow'>
+					<div class='NotiTableCell'>
+						<span><a class='link' title='".$aNoti['title']."' href='".$aNoti['message']."'>".$aNoti['title']."</a></span>
+						<span class='ndate'>".date("d.m.Y H:i",$aNoti['publish_date'])."</span>
+					</div>
+					<div class='NotiTableCell'><a class='fa fa-trash-o' data-message='".$aNoti['id']."' href='#'></a></div>
+				</div>";
+	}
+
+	$query = "SELECT * FROM `notifications` WHERE `userID` = ".$ud['userID']." AND `nloop` = 0 ORDER BY `publish_date`";
+	$statement = $db->prepare($query);
+	$statement->execute();
+	$oNotitData = $statement->fetchAll(PDO::FETCH_ASSOC);
+
+	$oNotiList = "";
+	foreach($oNotitData as $key => $oNoti) {
+		$oNotiList.= "<div class='NotiTableRow'>
+				<div class='NotiTableCell'>
+					<span><a class='link' title='".$oNoti['title']."' href='".$oNoti['message']."'>".$oNoti['title']."</a></span>
+					<span class='ndate'>".date("d.m.Y H:i",$oNoti['publish_date'])."</span>
+				</div>
+				<div class='NotiTableCell'><a class='fa fa-trash-o' data-message='".$oNoti['id']."' href='#'></a></div>
+			</div>";
+	}
+
+	$uOptions = json_decode($ud['uOptions'],true);
+	if($uOptions['notifications'] == 1) {
+		$oswitch = "<label class='switch' title='Enable/Disable Notifications'><input id='cnoti' type='checkbox' checked><span class='slider round'></span></label>";
+	} else {
+		$oswitch = "<label class='switch' title='Enable/Disable Notifications'><input id='cnoti' type='checkbox'><span class='slider round'></span></label>";
+	}
+
+	$nmessagesform = "<div id='nmessagesform' class='mbmdialog' style='width: 500px;'>
+	<div class='tab'>
+	  <button class='tablinks' data-val='aNoti'>Actual Notifications</button>
+	  <button class='tablinks' data-val='oNoti'>Old Notifications</button>
+
+	  $oswitch
+
+	</div>
+	<div id='aNoti' class='tabcontent'style='display: block'>
+	  <h3>Actual Notifications</h3>
+	  <div class='NotiTable'>
+	  	<div class='NotiTableBody'>
+		  $aNotiList
+		</div>
+	  </div>
+	</div>
+	
+	<div id='oNoti' class='tabcontent' style='display: none'>
+	  <h3>Old Notifications</h3>
+	  <div class='NotiTable'>
+	  	<div class='NotiTableBody'>
+		  $oNotiList
+		</div>
+	  </div>
+	</div>
+	</div>";
 	
 	$query = "SELECT * FROM `clients` WHERE `uid` = ".$ud['userID']." ORDER BY `lastseen` DESC";
 	$statement = $db->prepare($query);
@@ -1165,7 +1261,7 @@ function htmlHeader($ud) {
 	
 	$mngclientform = "<div id='mngcform' class='mmenu'>$clientList</div>";
 	
-	$htmlHeader.= $mainmenu.$userform.$passwordform.$pbulletform.$logform.$mnguserform.$mngclientform;
+	$htmlHeader.= $mainmenu.$userform.$passwordform.$pbulletform.$logform.$mnguserform.$mngclientform.$nmessagesform;
 	$db = NULL;
 	return $htmlHeader;
 }
@@ -1222,7 +1318,7 @@ function htmlFooter($uid) {
 					
 					<div id='footer'></div>
 					
-					<script type='text/javascript' src='./bookmarks.js'></script>
+					<script type='text/javascript' src='bookmarks.js?rand=7'></script>
 					</body></html>";
 
 	$menu = "<menu class='menu'><input type='hidden' id='bmid' title='bmtitle' value=''>
@@ -1440,7 +1536,6 @@ function doLogin($database,$realm) {
 		header("Last-Modified: ".gmdate("D, d M Y H:i:s")." GMT");
 		header("Cache-Control: post-check=0, pre-check=0",false);
 		header("Pragma: no-cache");
-		session_cache_limiter("public, no-store");
 		header('WWW-Authenticate: Basic realm="'.$realm.'", charset="UTF-8"');
 		http_response_code(401);
 		//$_SESSION['fauth']=false;
@@ -1480,7 +1575,7 @@ function initDB($database) {
 		$query = "CREATE TABLE `bookmarks` (`bmID`	TEXT NOT NULL, `bmParentID`	TEXT NOT NULL, `bmIndex` INTEGER NOT NULL, `bmTitle` TEXT, `bmType`	TEXT NOT NULL, `bmURL` TEXT, `bmAdded` TEXT NOT NULL, `bmModified` TEXT, `userID` INTEGER NOT NULL, `bmAction` INTEGER, PRIMARY KEY(`bmID`))";
 		$db->exec($query);
 		e_log(9,$query);
-		$query = "CREATE TABLE `users` (`userID` INTEGER NOT NULL, `userName` TEXT UNIQUE NOT NULL, `userType` INTEGER NOT NULL, `userHash`	TEXT NOT NULL, `userLastLogin` INT(11), `sessionID`	VARCHAR(255) UNIQUE, `userOldLogin`	INT(11), `pAPI`	VARCHAR(255) UNIQUE, `pDevice` VARCHAR(255) UNIQUE, PRIMARY KEY(`userID`));";
+		$query = "CREATE TABLE `users` (`userID` INTEGER NOT NULL, `userName` TEXT UNIQUE NOT NULL, `userType` INTEGER NOT NULL, `userHash`	TEXT NOT NULL, `userLastLogin` INT(11), `sessionID`	VARCHAR(255) UNIQUE, `userOldLogin`	INT(11), `pAPI`	VARCHAR(255) UNIQUE, `pDevice` VARCHAR(255) UNIQUE, `uOptions` TEXT, PRIMARY KEY(`userID`));";
 		$db->exec($query);
 		e_log(9,$query);
 		$query = "CREATE TABLE `clients` (`cid` TEXT NOT NULL UNIQUE,`cname` TEXT, `ctype` TEXT NOT NULL, `uid`	INTEGER NOT NULL, `lastseen` TEXT NOT NULL, PRIMARY KEY(`cid`));";

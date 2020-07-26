@@ -1,29 +1,37 @@
-var menu = document.querySelector('.menu');
-var bookmarks = document.querySelectorAll('.file').forEach(bookmark => bookmark.addEventListener('contextmenu',onContextMenu,false));
+$(document).ready(function() {
+	var menu = document.querySelector('.menu');
+	var bookmarks = document.querySelectorAll('.file').forEach(bookmark => bookmark.addEventListener('contextmenu',onContextMenu,false));
 
-if (/Mobi|Android/i.test(navigator.userAgent)) {
-	var ffolder = [];
-	$('.ffolder').on('change', function() {
-		if (this.checked) {
-			ffolder.push(this.value);
-		} else {
-			ffolder.splice(ffolder.indexOf(this.value), 1);
-			location.reload();
-		}
-		
-		var actFolder = "f_"+ffolder[ffolder.length-1];
-		
-		if(actFolder != 'f_undefined') {
-			$('.actFolder').removeClass('actFolder');
-			$('#'+actFolder+' li').addClass('actFolder');
-			$('.mainFolder > label').css('z-index',0);
-			$('#'+actFolder).addClass('actFolder mainFolder');
-			$('.mainFolder').addClass('actFolder');
-			$('li:not(.actFolder)').hide();
-		}
-	});
-}
+	if (/Mobi|Android/i.test(navigator.userAgent)) {
+		var ffolder = [];
+		$('.ffolder').on('change', function() {
+			if (this.checked) {
+				ffolder.push(this.value);
+			} else {
+				ffolder.splice(ffolder.indexOf(this.value), 1);
+				location.reload();
+			}
+			
+			var actFolder = "f_"+ffolder[ffolder.length-1];
+			
+			if(actFolder != 'f_undefined') {
+				$('.actFolder').removeClass('actFolder');
+				$('#'+actFolder+' li').addClass('actFolder');
+				$('.mainFolder > label').css('z-index',0);
+				$('#'+actFolder).addClass('actFolder mainFolder');
+				$('.mainFolder').addClass('actFolder');
+				$('li:not(.actFolder)').hide();
+			}
+		});
+	}
 
+	document.querySelectorAll('.tablinks').forEach(tab => tab.addEventListener('click',openMessages, false));
+	document.querySelectorAll('.fa-trash-o').forEach(message => message.addEventListener('click',delMessage, false));
+	document.querySelector('#cnoti').addEventListener('change',eNoti,false);
+
+	if(sessionStorage.getItem('gNoti') != 1) getNotifications();
+});
+ 
 $(document).keydown(function(e) {
 	if(e.keyCode == 27) {
 		$('.mbmdialog').hide();
@@ -132,7 +140,13 @@ $("#pbullet").on("click",function(){
 	$('.mbmdialog').hide();
 	$('.mmenu').hide();
 	$('#pbulletform').show();
-	console.log('Pushbullet');
+	document.querySelector('#bookmarks').addEventListener('click',hideMenu, false);
+});
+
+$("#nmessages").on("click",function(){
+	$('.mbmdialog').hide();
+	$('.mmenu').hide();
+	$('#nmessagesform').show();
 	document.querySelector('#bookmarks').addEventListener('click',hideMenu, false);
 });
 
@@ -485,4 +499,140 @@ function onClick(e){
 
     hideMenu();
     document.removeEventListener('click', onClick);
+}
+
+function openMessages(element) {
+	var i, tabcontent, tablinks;
+	tabcontent = document.getElementsByClassName("tabcontent");
+	for (i = 0; i < tabcontent.length; i++) {
+		tabcontent[i].style.display = "none";
+	}
+	
+	tablinks = document.getElementsByClassName("tablinks");
+	for (i = 0; i < tablinks.length; i++) {
+		tablinks[i].className = tablinks[i].className.replace(" active", "");
+	}
+
+	document.getElementById(element.target.dataset['val']).style.display = "block";
+	element.currentTarget.className += " active";
+}
+
+function delMessage(message) {
+	$.ajax({
+        url: document.location.href,
+		type: "POST",
+        data: {
+            caction: 'rmessage',
+            message: message.target.dataset['message'],
+        },
+        complete: function(r){
+			if(r.responseText === "1") {
+				$('.mmenu').hide();
+				hideMenu();
+				console.log("Notification removed.");
+				location.reload();
+			} else {
+				alert("Error removing notification, please check server log");
+			}
+		}
+    });
+}
+
+function eNoti(e) {
+	var nval = e.target.checked;
+	if(nval) {
+		if (!("Notification" in window)) {
+			alert("This browser does not support desktop notification");
+			setOption("notifications",0);
+		}
+		else if (Notification.permission === "granted") {
+			var notification = new Notification("Syncmarks", {
+				body: "Notifications will be enabled for Syncmarks.",
+				icon: './images/bookmarks192.png'
+			});
+			setOption("notifications",1);
+		}
+		else if (Notification.permission !== "denied") {
+			Notification.requestPermission().then(function (permission) {
+				if (permission === "granted") {
+					var notification = new Notification("Syncmarks", {
+						body: "Notifications will be enabled for Syncmarks.",
+						icon: './images/bookmarks192.png'
+					});
+					setOption("notifications",1);
+				}
+			});
+		}
+	} else {
+		setOption("notifications",0);
+	}
+}
+
+function setOption(option,val) {
+	$.ajax({
+        url: document.location.href,
+		type: "POST",
+        data: {
+            caction: 'soption',
+			option: option,
+			value: val
+        },
+        complete: function(r){
+			if(r.responseText === "1") {
+				console.log("Option saved.");
+			} else {
+				alert("Error saving option, please check server log");
+			}
+		}
+    });
+}
+
+function rNot(noti) {
+	$.ajax({
+        url: document.location.href,
+		type: "GET",
+        data: "durl="+noti,
+        complete: function(r){
+			if(r.responseText == '1')
+				console.log("Notification removed");
+			else
+				alert("Problem removing notification, please check server log.");
+		}
+    });
+}
+
+function show_noti(noti) {
+	if (Notification.permission !== 'granted')
+		Notification.requestPermission();
+	else {
+		let notification = new Notification(noti.title, {
+			body: noti.url,
+			icon: './images/bookmarks192.png',
+			requireInteraction: true
+		});
+		
+		notification.onclick = function() {
+			window.open(noti.url);
+			rNot(noti.nkey);
+		};
+	}
+}
+
+function getNotifications() {
+	$.ajax({
+        url: document.location.href,
+		type: "GET",
+        data: "gurls=1",
+        complete: function(r){
+			if(r.responseText) {
+				let notifications = JSON.parse(r.responseText);
+				if(notifications[0]['nOption'] == 1) {
+					notifications.forEach(function(notification){
+						show_noti(notification);
+					});
+				}
+			}
+		}
+	});
+	sessionStorage.setItem('gNoti', '1');
 }
